@@ -85,22 +85,35 @@ struct Car {
 
         switch (info.type) {
             case TERRAIN_ROAD:
-                speedMult = 1.3f;
-                steerMult = 1.1f;
+                speedMult = 1.5f;   // 50% faster
+                steerMult = 1.2f;
                 break;
             case TERRAIN_GRASS:
-                speedMult = 0.6f;
-                steerMult = 0.8f;
+                speedMult = 0.5f;   // 50% speed - you'll feel this
+                steerMult = 0.7f;
                 break;
             case TERRAIN_DIRT:
-                speedMult = 0.4f;
-                steerMult = 0.6f;
+                speedMult = 0.3f;   // 30% speed - very slow
+                steerMult = 0.5f;
                 break;
             case TERRAIN_PUDDLE:
-                speedMult = 0.15f;
-                steerMult = 0.2f;
+                speedMult = 0.1f;   // 10% speed - almost stuck
+                steerMult = 0.15f;  // barely steerable
                 drift = true;
                 break;
+        }
+
+        static float debugTimer = 0.0f;
+        static TerrainType lastType = TERRAIN_ROAD;
+        debugTimer += dt;
+
+        if (info.type != lastType || debugTimer > 1.0f) {
+            const char* terrainName[] = {"ROAD", "GRASS", "DIRT", "PUDDLE"};
+            std::cout << "Terrain: " << terrainName[info.type] 
+                    << " | Speed Mult: " << speedMult 
+                    << " | Current Speed: " << speed << "\n";
+            lastType = info.type;
+            debugTimer = 0.0f;
         }
 
         isDrifting = drift;  // Set drift state
@@ -109,13 +122,28 @@ struct Car {
         if (forward) speed += accel * speedMult * dt;
         if (backward) speed -= brake * speedMult * dt;
 
+        // Apply terrain-based friction (always, not just when coasting)
+        float terrainFriction = friction * (2.0f - speedMult); 
+
         if (!forward && !backward) {
-            if (speed > 0) speed -= friction * dt;
-            if (speed < 0) speed += friction * dt;
+            if (speed > 0) speed -= terrainFriction * dt;
+            if (speed < 0) speed += terrainFriction * dt;
             if (std::fabs(speed) < 0.1f) speed = 0;
         }
 
-        speed = glm::clamp(speed, -maxSpeed * 0.5f, maxSpeed);
+        // CRITICAL FIX: Terrain-based max speed
+        float terrainMaxSpeed = maxSpeed * speedMult;
+        speed = glm::clamp(speed, -terrainMaxSpeed * 0.5f, terrainMaxSpeed);
+
+        // CRITICAL FIX: Active speed reduction when over terrain limit
+        if (speed > terrainMaxSpeed) {
+            speed -= (speed - terrainMaxSpeed) * 5.0f * dt; // Quick slowdown
+        }
+        if (speed < -terrainMaxSpeed * 0.5f) {
+            speed -= (speed + terrainMaxSpeed * 0.5f) * 5.0f * dt;
+        }
+
+
 
         if (left) steerAngle = steerSpeed;
         else if (right) steerAngle = -steerSpeed;
@@ -132,23 +160,85 @@ struct Car {
             driftAngle *= 0.9f;
         }
 
+        // Store old position
+        glm::vec3 oldPosition = position;
+
+        // Calculate new position
         position.x += std::sin(rotation) * speed * dt;
         position.z += std::cos(rotation) * speed * dt;
 
-        // Building collision
+        // === BUILDING COLLISION (with car size buffer) ===
+        const float carRadius = 2.5f; // Car's collision radius
+
+        bool collided = false;
+
         for (const auto& b : buildings) {
-            if (position.x >= b.position.x - b.width/2 &&
-                position.x <= b.position.x + b.width/2 &&
-                position.z >= b.position.z - b.depth/2 &&
-                position.z <= b.position.z + b.depth/2) {
+            // Expanded collision box that accounts for car size
+            float minX = b.position.x - b.width/2 - carRadius;
+            float maxX = b.position.x + b.width/2 + carRadius;
+            float minZ = b.position.z - b.depth/2 - carRadius;
+            float maxZ = b.position.z + b.depth/2 + carRadius;
+            
+            // Check if car is in expanded collision zone
+            if (position.x >= minX && position.x <= maxX &&
+                position.z >= minZ && position.z <= maxZ) {
                 
-                position.x -= std::sin(rotation) * speed * dt * 2.0f;
-                position.z -= std::cos(rotation) * speed * dt * 2.0f;
-                speed *= 0.5f;
-                std::cout << "BUMPED INTO BUILDING!\n";
+                // REVERT to old position completely
+                position = oldPosition;
+                
+                // Stop the car
+                speed *= 0.2f;
+                
+                collided = true;
+                std::cout << "BUMPED INTO BUILDING! (at " 
+                        << b.position.x << ", " << b.position.z << ")\n";
                 break;
             }
-        } 
+        }
+
+        // If we collided, try to slide along the wall instead of full stop
+        if (collided) {
+            // Try moving only in X direction
+            glm::vec3 slideX = oldPosition;
+            slideX.x += std::sin(rotation) * speed * dt;
+            
+            bool canSlideX = true;
+            for (const auto& b : buildings) {
+                float minX = b.position.x - b.width/2 - carRadius;
+                float maxX = b.position.x + b.width/2 + carRadius;
+                float minZ = b.position.z - b.depth/2 - carRadius;
+                float maxZ = b.position.z + b.depth/2 + carRadius;
+                
+                if (slideX.x >= minX && slideX.x <= maxX &&
+                    slideX.z >= minZ && slideX.z <= maxZ) {
+                    canSlideX = false;
+                    break;
+                }
+            }
+            
+            // Try moving only in Z direction
+            glm::vec3 slideZ = oldPosition;
+            slideZ.z += std::cos(rotation) * speed * dt;
+            
+            bool canSlideZ = true;
+            for (const auto& b : buildings) {
+                float minX = b.position.x - b.width/2 - carRadius;
+                float maxX = b.position.x + b.width/2 + carRadius;
+                float minZ = b.position.z - b.depth/2 - carRadius;
+                float maxZ = b.position.z + b.depth/2 + carRadius;
+                
+                if (slideZ.x >= minX && slideZ.x <= maxX &&
+                    slideZ.z >= minZ && slideZ.z <= maxZ) {
+                    canSlideZ = false;
+                    break;
+                }
+            }
+            
+            // Apply sliding if possible
+            if (canSlideX) position.x = slideX.x;
+            if (canSlideZ) position.z = slideZ.z;
+        }
+
     }     
 };
 
@@ -765,7 +855,7 @@ int main() {
             glUniformMatrix4fv(glGetUniformLocation(carShader, "model"), 1, GL_FALSE, glm::value_ptr(model));
             glUniformMatrix4fv(glGetUniformLocation(carShader, "view"), 1, GL_FALSE, glm::value_ptr(view));
             glUniformMatrix4fv(glGetUniformLocation(carShader, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
-            glUniform3f(glGetUniformLocation(carShader, "carColor"), 0.2f, 0.3f, 0.8f); // blue
+            glUniform3f(glGetUniformLocation(carShader, "carColor"), 0.3f, 0.5f, 1.0f); // blue
             glUniform1f(glGetUniformLocation(carShader, "fogDensity"), 0.0f);
             glUniform3fv(glGetUniformLocation(carShader, "cameraPos"), 1, glm::value_ptr(cameraPos));
             glUniform3fv(glGetUniformLocation(carShader, "fogColor"), 1, glm::value_ptr(fogColor));
