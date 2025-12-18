@@ -1,4 +1,6 @@
-![Build](https://github.com/yourname/GTA7/workflows/Build%20macOS/badge.svg)
+![macOS Build](https://github.com/blackdragoon26/GTA7/actions/workflows/build-macos.yml/badge.svg)
+![Linux Build](https://github.com/blackdragoon26/GTA7/actions/workflows/build-linux.yml/badge.svg)
+![Windows Build](https://github.com/blackdragoon26/GTA7/actions/workflows/build-windows.yml/badge.svg)
 
 something I always wanted to do, raw game , inspired by [OG](https://youtube.com/@tokyospliff?si=MAT-5_LDeemosoXZ)
 
