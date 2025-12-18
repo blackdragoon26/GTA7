@@ -1,46 +1,57 @@
 cmake_minimum_required(VERSION 3.15)
-project(InfiniteOpenWorld LANGUAGES CXX)
+project(GTA7 LANGUAGES CXX C)
 
-# Require C++17 (for std::filesystem, etc.)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# --- Find dependencies ---
-find_package(OpenGL REQUIRED)
-find_package(glfw3 REQUIRED)
+# --- Fetch Dependencies ---
+include(FetchContent)
 
-# --- Create executable ---
-add_executable(${PROJECT_NAME} main.cpp)
+# ---- GLFW ----
+FetchContent_Declare(glfw
+    GIT_REPOSITORY https://github.com/glfw/glfw.git
+    GIT_TAG        3.4
+)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL        OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(glfw)
 
-# --- Include directories ---
-target_include_directories(${PROJECT_NAME} PRIVATE 
+# ---- GLM (header-only) ----
+FetchContent_Declare(glm
+    GIT_REPOSITORY https://github.com/g-truc/glm.git
+    GIT_TAG        1.0.1  # Stable release
+)
+FetchContent_MakeAvailable(glm)
+
+# --- Pre-generated GLAD ---
+add_library(glad STATIC glad/src/gl.c)
+target_include_directories(glad PUBLIC glad/include)
+
+# --- Executable ---
+add_executable(GTA7 main.cpp)
+
+# Include directories for all dependencies
+target_include_directories(GTA7 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${glm_SOURCE_DIR}        # ← GLM headers
 )
 
-# --- Link libraries ---
-target_link_libraries(${PROJECT_NAME} 
-    OpenGL::GL 
+target_link_libraries(GTA7 
+    glad
     glfw
 )
 
-# --- Copy audio to build directory ---
+# --- Audio ---
 configure_file(enginesound.mp3 ${CMAKE_CURRENT_BINARY_DIR}/enginesound.mp3 COPYONLY)
 
-# --- Platform-specific settings ---
+# --- macOS frameworks ---
 if(APPLE)
-    # Required for macOS OpenGL
-    set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_VISIBILITY_PRESET hidden)
-    set_property(TARGET ${PROJECT_NAME} PROPERTY VISIBILITY_PRESET hidden)
-    target_link_options(${PROJECT_NAME} PRIVATE
-        "-framework Cocoa"
-        "-framework IOKit"
-        "-framework CoreVideo"
+    target_link_options(GTA7 PRIVATE
+        "SHELL:-framework Cocoa -framework IOKit -framework CoreVideo -framework OpenGL"
     )
-elseif(WIN32)
-    # Optional: embed manifest or set subsystem
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:CONSOLE")
 endif()
 
-# --- Optional: Enable MP3 support info ---
-message(STATUS "Building InfiniteOpenWorld with miniaudio (MP3 enabled)")
+message(STATUS "GTA7: Built with bundled GLFW, GLAD, and GLM")
