@@ -1,3 +1,5 @@
+![Build](https://github.com/yourname/GTA7/workflows/Build%20macOS/badge.svg)
+
 something I always wanted to do, raw game , inspired by [OG](https://youtube.com/@tokyospliff?si=MAT-5_LDeemosoXZ)
 
 ## specs

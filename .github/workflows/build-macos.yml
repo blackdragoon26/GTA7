@@ -1,0 +1,25 @@
+name: Build macOS
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: macos-13
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: |
+          mkdir build
+          cd build
+          cmake .. -G "Unix Makefiles"
+
+      - name: Build
+        run: |
+          cmake --build build --parallel
+
+      - name: Test (run for 2 seconds, then kill)
+        run: |
+          timeout 2s ./build/GTA7 || true
+        shell: bash
